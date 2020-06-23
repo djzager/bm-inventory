@@ -5,6 +5,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--deploy-tag", help='Tag for all deployment images', type=str, default='latest')
+parser.add_argument("--local", help='Whether to use local images', action='store_true')
 args = parser.parse_args()
 
 SRC_FILE = os.path.join(os.getcwd(), "deploy/bm-inventory.yaml")
@@ -15,6 +16,9 @@ def main():
     with open(SRC_FILE, "r") as src:
         with open(DST_FILE, "w+") as dst:
             data = src.read()
+
+            data = data.replace("REPLACE_POLICY", "Never" if args.local else "Always")
+
             if args.deploy_tag is not "":
                 data = data.replace("REPLACE_IMAGE", "quay.io/ocpmetal/bm-inventory:{}".format(args.deploy_tag))
             else:

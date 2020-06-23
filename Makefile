@@ -7,13 +7,13 @@ KUBECTL=kubectl -n assisted-installer
 ifeq ($(TARGET), minikube)
 define get_service
 minikube service --url $(1) -n assisted-installer | sed 's/http:\/\///g'
-endef
+endef # get_service
 else
 define get_service
 kubectl get service $(1) -n assisted-installer | grep $(1) | awk '{print $$4 ":" $$5}' | \
 	awk '{split($$0,a,":"); print a[1] ":" a[2]}'
-endef
-endif
+endef # get_service
+endif # TARGET
 
 SERVICE := $(or ${SERVICE},quay.io/ocpmetal/bm-inventory:latest)
 OBJEXP := $(or ${OBJEXP},quay.io/ocpmetal/s3-object-expirer:latest)
@@ -32,9 +32,6 @@ build: create-build-dir lint unit-test
 create-build-dir:
 	mkdir -p build
 
-clean:
-	rm -rf build
-
 format:
 	goimports -w -l cmd/ internal/ subsystem/
 
@@ -47,6 +44,10 @@ generate-from-swagger:
 	docker run -u $(UID):$(UID) -v $(PWD):$(PWD):rw,Z -v /etc/passwd:/etc/passwd -w $(PWD) quay.io/goswagger/swagger:v0.24.0 generate client	--template=stratoscale -f swagger.yaml --template-dir=/templates/contrib
 	go generate $(shell go list ./client/... ./models/... ./restapi/...)
 
+##########
+# Update #
+##########
+
 update: build
 	GIT_REVISION=${GIT_REVISION} docker build --build-arg GIT_REVISION -f Dockerfile.bm-inventory . -t $(SERVICE)
 	docker push $(SERVICE)
@@ -54,6 +55,10 @@ update: build
 update-expirer: build
 	GIT_REVISION=${GIT_REVISION} docker build --build-arg GIT_REVISION -f Dockerfile.s3-object-expirer . -t $(OBJEXP)
 	docker push $(OBJEXP)
+
+##########
+# Deploy #
+##########
 
 deploy-all: create-build-dir deploy-namespace deploy-mariadb deploy-s3 deploy-service deploy-expirer
 	echo "Deployment done"
@@ -80,7 +85,7 @@ deploy-service-requirements: deploy-namespace deploy-inventory-service-file
 	python3 ./tools/deploy_assisted_installer_configmap.py --target "$(TARGET)" --domain "$(INGRESS_DOMAIN)" --deploy-tag "$(DEPLOY_TAG)"
 
 deploy-service: deploy-namespace deploy-service-requirements deploy-role
-	python3 ./tools/deploy_assisted_installer.py --deploy-tag "$(DEPLOY_TAG)"
+	python3 ./tools/deploy_assisted_installer.py --deploy-tag "$(DEPLOY_TAG)" $(LOCAL_IMAGES)
 
 deploy-expirer: deploy-role
 	python3 ./tools/deploy_s3_object_expirer.py --deploy-tag "$(DEPLOY_TAG)"
@@ -91,7 +96,21 @@ deploy-role: deploy-namespace
 deploy-mariadb: deploy-namespace
 	python3 ./tools/deploy_mariadb.py
 
+deploy-test:
+	export SERVICE=quay.io/ocpmetal/bm-inventory:test && export LOCAL_IMAGES=--local && \
+	$(MAKE) _build_inventory_in_minikube && \
+	skipper make deploy-all
+
+########
+# Test #
+########
+
 subsystem-run: test subsystem-clean
+
+_build_inventory_in_minikube:
+	skipper make build
+	eval $$(minikube docker-env) && \
+	GIT_REVISION=${GIT_REVISION} docker build --build-arg GIT_REVISION -f Dockerfile.bm-inventory . -t $(SERVICE)
 
 test:
 	INVENTORY=$(shell $(call get_service,bm-inventory) | sed 's/http:\/\///g') \
@@ -101,6 +120,15 @@ test:
 
 unit-test:
 	go test -v $(or ${TEST}, ${TEST}, $(shell go list ./... | grep -v subsystem)) -cover
+
+#########
+# Clean #
+#########
+
+clear-all: clean subsystem-clean clear-deployment
+
+clean:
+	rm -rf build
 
 subsystem-clean:
 	$(KUBECTL) get pod -o name | grep create-image | xargs $(KUBECTL) delete 1> /dev/null ; true
