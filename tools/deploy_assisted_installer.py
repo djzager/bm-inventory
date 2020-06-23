@@ -18,7 +18,7 @@ def main():
     with open(SRC_FILE, "r") as src:
             data = yaml.safe_load(src)
             if args.deploy_tag is not "":
-                data["spec"]["template"]["spec"]["containers"][0]["image"] = args.deploy_tag
+                data["spec"]["template"]["spec"]["containers"][0]["image"] = "quay.io/ocpmetal/bm-inventory:{}".format(args.deploy_tag)
             else:
                 data["spec"]["template"]["spec"]["containers"][0]["image"] = os.environ.get("SERVICE")
 

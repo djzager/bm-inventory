@@ -28,7 +28,6 @@ def main():
 def is_pod_in_state():
 
         state_keys = get_pod_state()
-        print(state_keys)
 
         if not args.state in state_keys:
             return False
