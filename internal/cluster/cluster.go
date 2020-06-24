@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/filanov/stateswitch"
+
 	"github.com/pkg/errors"
 
 	"github.com/filanov/bm-inventory/internal/common"
@@ -66,9 +68,13 @@ type Manager struct {
 	registrationAPI RegistrationAPI
 	installationAPI InstallationAPI
 	eventsHandler   events.Handler
+	sm              stateswitch.StateMachine
 }
 
 func NewManager(log logrus.FieldLogger, db *gorm.DB, eventsHandler events.Handler) *Manager {
+	th := &transitionHandler{
+		log: log,
+	}
 	return &Manager{
 		log:             log,
 		db:              db,
@@ -80,6 +86,7 @@ func NewManager(log logrus.FieldLogger, db *gorm.DB, eventsHandler events.Handle
 		registrationAPI: NewRegistrar(log, db),
 		installationAPI: NewInstaller(log, db),
 		eventsHandler:   eventsHandler,
+		sm:              NewClusterStateMachine(th),
 	}
 }
 
